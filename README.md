@@ -100,8 +100,10 @@ go run ./cmd/serve                               # dev server on :8787
 GOOS=js GOARCH=wasm go build -o web/engine.wasm ./cmd/wasm
 ```
 
-The engine is ~4.9 MB raw, ~1.4 MB gzipped, and has no runtime dependencies — no framework, no
-build step for the front end, nothing but Go and the platform.
+The deployed engine is 3.6 MB raw and ~1.0 MB gzipped over the wire, with no runtime
+dependencies — no framework, no build step for the front end, nothing but Go and the platform.
+(A local build may differ by a megabyte or so; binary size moves with the Go version, and CI
+pins a different one than you may have installed.)
 
 ## Prior art
 
