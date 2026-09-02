@@ -263,6 +263,27 @@ h1 {
 .metric--data  .metric__value { color: var(--data); }
 .metric--gold  .metric__value { color: var(--gold); }
 
+/* ── numbered walkthrough ─────────────────────────────────────── */
+.steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem 1.5rem;
+}
+.step { display: grid; grid-template-columns: auto 1fr; gap: .75rem; align-items: start; }
+.step__n {
+  font-family: var(--mono);
+  font-size: .7rem;
+  width: 22px; height: 22px;
+  display: grid; place-items: center;
+  border: 1px solid var(--hair-2);
+  border-radius: 50%;
+  color: var(--data);
+  flex-shrink: 0;
+}
+.step p { font-size: .86rem; color: var(--mute); line-height: 1.6; }
+.step p b { color: var(--fg); font-weight: 600; }
+.step p em { color: var(--data); font-style: normal; font-family: var(--mono); font-size: .8rem; }
+
 /* ── topology ─────────────────────────────────────────────────── */
 #topology { width: 100%; height: auto; display: block; overflow: visible; }
 

@@ -49,19 +49,21 @@
 
   <header class="masthead">
     <p class="eyebrow">Distributed systems · <b>Go → WebAssembly</b> · runs in your browser</p>
-    <h1>Consensus that survives a network broken in one direction.</h1>
+    <h1>What happens when the network breaks in only one direction?</h1>
     <p class="standfirst">
-      Raft and Paxos quietly assume that if A can reach B, B can reach A. Across clouds that
-      assumption breaks — asymmetric routing, one-way security-group rules and half-open NAT
-      state all produce links that work in exactly one direction. The result is not a crash.
-      It is a <strong>livelock</strong>: a node campaigns forever, deposing a healthy leader
-      on every attempt, while every health check reports green.
+      You can call your friend. Your friend can't call you. Your phone works fine. Their phone
+      works fine. Nothing is <em>broken</em> — and yet you can't have a conversation.
+      Real networks do this constantly, and databases handle it <strong>badly</strong>.
+    </p>
+    <p class="standfirst">
+      Below are three servers trying to stay in sync. You get to break the network between them
+      however you want, and watch what they do about it.
     </p>
     <div class="provenance">
-      Nothing here is pre-recorded. The Go consensus engine — real Ed25519 signatures, real
-      leader election, real hash-chained logs — is compiled to WebAssembly and executing in
-      your browser right now. Cut a link below and you are driving the same code the test
-      suite exercises. Same seed, same run: <code>deterministic by construction</code>.
+      This is not a video, a mockup, or an animation. The actual database code — written in Go,
+      compiled to WebAssembly — is running inside your browser tab right now. When you cut a
+      link, you are breaking a real system and watching it genuinely fail. Nobody scripted the
+      outcome. <code>It is the same code the tests run against.</code>
     </div>
   </header>
 
@@ -83,6 +85,48 @@
   </div>
 
   <main class="bento">
+
+    <section class="card col-12">
+      <div class="card__head">
+        <h2 class="card__title">Start here — 60 seconds</h2>
+        <span class="card__note">no distributed systems background needed</span>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <span class="step__n">1</span>
+          <p>
+            <b>The setup.</b> Three servers, one in AWS and two in Google Cloud. They elect a
+            <em>leader</em>. Only the leader accepts writes; it copies each write to the others.
+            That's it — that's the whole idea behind Raft, the algorithm real databases use.
+          </p>
+        </div>
+        <div class="step">
+          <span class="step__n">2</span>
+          <p>
+            <b>Break it the normal way.</b> Click <em>propose write</em> a few times and watch
+            <em>writes saved</em> go up. Now click one grey arrow to cut that direction.
+            The cluster notices, re-elects, keeps working. This is the case everyone handles.
+          </p>
+        </div>
+        <div class="step">
+          <span class="step__n">3</span>
+          <p>
+            <b>Break it the nasty way.</b> Switch to <em>baseline raft</em>, then hit
+            <em>cut inbound to aws-a</em>. Now aws-a can still <em>send</em> to everyone, but
+            hears nothing back. Watch <em>term bumps</em> climb forever and the leader vanish.
+            The cluster is now completely stuck — and no server has crashed.
+          </p>
+        </div>
+        <div class="step">
+          <span class="step__n">4</span>
+          <p>
+            <b>Fix it.</b> Same fault, but switch to <em>crossfault</em>. Term bumps stop.
+            A leader stays elected. Look at aws-a's <em>declined</em> counter going up — that's
+            it realising it's cut off and choosing to shut up instead of wrecking things.
+          </p>
+        </div>
+      </div>
+    </section>
 
     <section class="card col-8">
       <div class="card__head">
@@ -107,28 +151,28 @@
     <section class="card col-3">
       <div class="metric metric--alert">
         <span class="metric__value" id="m-bumps">0</span>
-        <span class="metric__label">term bumps — the livelock signal. Flat is healthy; climbing means the cluster is thrashing instead of working.</span>
+        <span class="metric__label"><b>term bumps</b> — how many times a server has said "let's hold another election". A healthy cluster elects once and stops. A number that keeps climbing means they're arguing instead of working.</span>
       </div>
     </section>
 
     <section class="card col-3">
       <div class="metric metric--ok">
         <span class="metric__value" id="m-commit">0</span>
-        <span class="metric__label">committed entries. The only measure that matters: is the cluster doing useful work?</span>
+        <span class="metric__label"><b>writes saved</b> — data successfully agreed on by a majority and safe. If this is stuck at zero, the database is doing nothing useful, no matter how busy it looks.</span>
       </div>
     </section>
 
     <section class="card col-3">
       <div class="metric metric--gold">
         <span class="metric__value" id="m-rejected">0</span>
-        <span class="metric__label">forged messages rejected at the signature check, before touching consensus state.</span>
+        <span class="metric__label"><b>forgeries blocked</b> — messages someone tampered with in transit, caught and thrown away before they could corrupt any data.</span>
       </div>
     </section>
 
     <section class="card col-3">
       <div class="metric metric--data">
         <span class="metric__value" id="m-relayed">0</span>
-        <span class="metric__label">messages routed around a broken edge via a third node, instead of being lost.</span>
+        <span class="metric__label"><b>messages rerouted</b> — sent the long way round through a third server because the direct road was closed. Like a detour.</span>
       </div>
     </section>
 
@@ -155,72 +199,88 @@
 
     <section class="card col-6">
       <div class="prose">
-        <h2>What actually breaks</h2>
+        <h2>Why this breaks things so badly</h2>
         <p>
-          Standard consensus is crash-fault tolerant: it assumes a node either works or stops.
-          A one-way link violates that model without any node failing. The classic
-          symptom is the <strong>disruptive server</strong> — a replica that can send but not
-          receive campaigns endlessly, incrementing its term each round and forcing a healthy
-          leader to stand down, forever.
+          Picture a meeting. One person can't hear anyone else, but everyone can hear
+          <em>them</em>. Every ten seconds they shout <b>"I call a new vote for chair!"</b> —
+          which legally forces the current chair to step down. Nobody's vote ever reaches them,
+          so they never actually become chair. So they shout it again. And again. Forever.
         </p>
         <p>
-          Two known mitigations exist and etcd ships both: <code>PreVote</code>, a non-binding
-          straw poll that does not increment anyone's term (Ongaro's Raft thesis §9.6), and
-          <code>CheckQuorum</code>, which makes a leader step down once it stops hearing from a
-          majority. Switch to <em>+ prevote</em> above and watch the term counter go flat.
+          Nobody in that room is broken. Nobody walked out. But no decision will ever be made
+          again. That is a <strong>livelock</strong>, and it's exactly what a one-way network
+          failure does to a database. It's worse than a crash, because with a crash you at
+          least get an alert.
+        </p>
+        <p>
+          Databases assume servers either work or die. They have no idea what to do with a
+          server that is <em>half</em> working.
         </p>
 
         <div class="finding">
-          <b>Measured finding, reported as found:</b> under this fault, PreVote alone already
-          fixes the livelock. Baseline logs <b>30</b> term bumps in 300 ticks; PreVote logs
-          <b>1</b>; CrossFault also logs <b>1</b>. CrossFault does not beat PreVote here — it
-          matches it, and adds a different capability: relaying. Claiming otherwise would be
-          easy and dishonest, so the numbers are printed exactly as the test suite produces them.
+          <b>An honest result, not a sales pitch:</b> this problem already has a decent fix,
+          invented in 2014 and shipped in etcd. It's called <b>PreVote</b>: before forcing a
+          real vote, ask around informally first — "would you even vote for me?" If the answer
+          is no, don't blow up the meeting. In our tests baseline logs <b>30</b> term bumps;
+          PreVote logs <b>1</b>. CrossFault also logs <b>1</b>. So CrossFault <b>ties</b> here,
+          it doesn't win. Pretending otherwise would be easy and dishonest.
         </div>
 
-        <h2>What CrossFault adds</h2>
+        <h2>So what's actually new here?</h2>
         <p>
-          PreVote makes a badly-connected node harmless. It does not make it <em>useful</em>,
-          and it does not recover the lost link. CrossFault tracks reachability as a
-          <strong>directed graph</strong> rather than a single number, which enables two things
-          PreVote cannot do: a node with one-way connectivity declines to campaign at all
-          (rather than campaigning and losing), and messages are <strong>relayed</strong>
-          through a third node around the broken edge — the approach proposed in
-          <em>Toward a Generic Fault Tolerance Technique for Partial Network Partitioning</em>
-          (OSDI '20).
+          PreVote stops the broken server from causing damage. It doesn't help the server
+          <em>understand</em> that it's broken, and it doesn't get any traffic through.
         </p>
+        <p>
+          CrossFault keeps a map of who can reach whom, <strong>separately for each
+          direction</strong> — because "A can reach B" and "B can reach A" are genuinely two
+          different facts. That map buys two things:
+        </p>
+        <ul>
+          <li>A cut-off server works out that it's cut off, and deliberately stays quiet.</li>
+          <li>Messages take a <strong>detour</strong> through a third server when the direct
+              route is dead — like traffic rerouting around a closed road.</li>
+        </ul>
       </div>
     </section>
 
     <section class="card col-6">
       <div class="prose">
-        <h2>Why there is no BFT here</h2>
+        <h2>The other half: someone tampering with the wires</h2>
         <p>
-          A hostile transit path is <strong>not</strong> a Byzantine fault, and conflating the
-          two is the most common error in this problem space. Byzantine fault tolerance is for
-          when a <em>node</em> is compromised and lies. Tampering on the <em>wire</em> is a
-          different, cheaper problem.
+          Second problem. These servers live in different clouds, so their messages cross the
+          public internet through equipment nobody fully controls. What if someone rewrites a
+          message in transit — changing <code>pay $10</code> into <code>pay $10000</code>?
         </p>
         <p>
-          Every message here is signed end-to-end with Ed25519 by the sending node, and verified
-          before it can touch consensus state. TLS does not solve this, because TLS is
-          hop-by-hop and terminates at cloud load balancers and API gateways, which then see
-          plaintext. Google's <a href="https://docs.cloud.google.com/docs/security/encryption-in-transit/application-layer-transport-security" rel="noopener noreferrer">ALTS</a>
-          exists for exactly this reason.
+          The usual panic response is "we need Byzantine fault tolerance" — the heavy machinery
+          blockchains use. It's slow, it needs three times as many servers, and here it is
+          <strong>completely unnecessary</strong>.
         </p>
         <p>
-          The consequence is the whole argument: an attacker who fully controls the wire can
-          only <strong>destroy</strong> a message, never forge one. Destruction is an
-          <em>omission</em> — a fault class crash-fault-tolerant consensus already handles.
-          Hit <em>corrupt a link</em> and watch the rejection counter climb while the log stays
-          clean. No 3f+1 replicas, no proof-of-stake, no seconds-long finality.
+          Think of a <strong>wax seal on an envelope</strong>. The postman can steal your letter.
+          They can burn it. What they <em>cannot</em> do is open it, rewrite it, and re-seal it
+          convincingly — they don't have your seal. So the worst attack available is
+          <em>"the letter never arrived"</em>. And databases already handle lost messages
+          perfectly well: they just send it again.
         </p>
         <p>
-          What signing does <strong>not</strong> buy: protection from a genuinely compromised
-          node, which holds a valid key and can sign whatever it likes. That needs accountability
-          — making equivocation provable and attributable, in the spirit of
-          <em>PeerReview</em> (SOSP '07) — which is the next layer, and is not yet built here.
+          That's what happens here. Every message is signed by the server that wrote it and
+          checked on arrival. Tampered ones fail the check and get binned. Hit
+          <em>corrupt a link</em> and watch <b>forgeries blocked</b> climb while the saved data
+          stays clean. A hard problem downgraded into an easy one.
         </p>
+        <p>
+          Why not just use HTTPS? Because HTTPS protects each <em>hop</em>, and unwraps at every
+          load balancer along the way — each of which sees the plain text. Google hit this exact
+          wall and built <a href="https://docs.cloud.google.com/docs/security/encryption-in-transit/application-layer-transport-security" rel="noopener noreferrer">ALTS</a> for it.
+        </p>
+        <div class="finding">
+          <b>What this does not fix:</b> a server that has been fully hacked. It still owns its
+          seal, so it can sign lies all day. Catching that needs a different technique — proving
+          who lied, rather than preventing it. That layer is designed but
+          <strong>not built yet</strong>, and it would be dishonest to imply otherwise.
+        </div>
       </div>
     </section>
 
