@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CrossFault — cross-cloud consensus under partial partitions</title>
+<title>CrossFault: cross-cloud consensus under partial partitions</title>
 <meta name="description" content="A live Raft engine, compiled to WebAssembly, that you can break. Cut a network link in one direction only and watch textbook consensus livelock while a connectivity-aware variant keeps committing.">
 
 <!--
   Content-Security-Policy, tightened as far as this page allows.
   'wasm-unsafe-eval' is required to instantiate WebAssembly at all; it does NOT
   re-enable eval() for JavaScript. Everything else is same-origin, there is no
-  connect-src beyond self (the engine runs locally — nothing is uploaded), and
+  connect-src beyond self (the engine runs locally, nothing is uploaded), and
   object/base/frame-ancestors are shut off entirely.
 -->
 <meta http-equiv="Content-Security-Policy" content="
@@ -52,7 +52,7 @@
     <h1>What happens when the network breaks in only one direction?</h1>
     <p class="standfirst">
       You can call your friend. Your friend can't call you. Your phone works fine. Their phone
-      works fine. Nothing is <em>broken</em> — and yet you can't have a conversation.
+      works fine. Nothing is <em>broken</em>. And yet you can't have a conversation.
       Real networks do this constantly, and databases handle it <strong>badly</strong>.
     </p>
     <p class="standfirst">
@@ -60,8 +60,8 @@
       however you want, and watch what they do about it.
     </p>
     <div class="provenance">
-      This is not a video, a mockup, or an animation. The actual database code — written in Go,
-      compiled to WebAssembly — is running inside your browser tab right now. When you cut a
+      This is not a video, a mockup, or an animation. The actual database code, written in Go and
+      compiled to WebAssembly, is running inside your browser tab right now. When you cut a
       link, you are breaking a real system and watching it genuinely fail. Nobody scripted the
       outcome. <code>It is the same code the tests run against.</code>
     </div>
@@ -81,14 +81,14 @@
     <button class="btn" id="resetbtn">reset</button>
 
     <span class="spacer"></span>
-    <span class="tickread">tick <b id="tick">0</b> · leader <b id="leaderread">—</b></span>
+    <span class="tickread">tick <b id="tick">0</b> · leader <b id="leaderread">none</b></span>
   </div>
 
   <main class="bento">
 
     <section class="card col-12">
       <div class="card__head">
-        <h2 class="card__title">Start here — 60 seconds</h2>
+        <h2 class="card__title">Start here · 60 seconds</h2>
         <span class="card__note">no distributed systems background needed</span>
       </div>
       <div class="steps">
@@ -97,7 +97,7 @@
           <p>
             <b>The setup.</b> Three servers, one in AWS and two in Google Cloud. They elect a
             <em>leader</em>. Only the leader accepts writes; it copies each write to the others.
-            That's it — that's the whole idea behind Raft, the algorithm real databases use.
+            That's it. That's the whole idea behind Raft, the algorithm real databases use.
           </p>
         </div>
         <div class="step">
@@ -114,15 +114,15 @@
             <b>Break it the nasty way.</b> Switch to <em>baseline raft</em>, then hit
             <em>cut inbound to aws-a</em>. Now aws-a can still <em>send</em> to everyone, but
             hears nothing back. Watch <em>term bumps</em> climb forever and the leader vanish.
-            The cluster is now completely stuck — and no server has crashed.
+            The cluster is now completely stuck, and no server has crashed.
           </p>
         </div>
         <div class="step">
           <span class="step__n">4</span>
           <p>
             <b>Fix it.</b> Same fault, but switch to <em>crossfault</em>. Term bumps stop.
-            A leader stays elected. Look at aws-a's <em>declined</em> counter going up — that's
-            it realising it's cut off and choosing to shut up instead of wrecking things.
+            A leader stays elected. Watch aws-a's <em>declined</em> counter go up. That's it
+            realising it's cut off, and choosing to shut up instead of wrecking things.
           </p>
         </div>
       </div>
@@ -151,28 +151,28 @@
     <section class="card col-3">
       <div class="metric metric--alert">
         <span class="metric__value" id="m-bumps">0</span>
-        <span class="metric__label"><b>term bumps</b> — how many times a server has said "let's hold another election". A healthy cluster elects once and stops. A number that keeps climbing means they're arguing instead of working.</span>
+        <span class="metric__label"><b>term bumps.</b> How many times a server has said "let's hold another election". A healthy cluster elects once and stops. A number that keeps climbing means they're arguing instead of working.</span>
       </div>
     </section>
 
     <section class="card col-3">
       <div class="metric metric--ok">
         <span class="metric__value" id="m-commit">0</span>
-        <span class="metric__label"><b>writes saved</b> — data successfully agreed on by a majority and safe. If this is stuck at zero, the database is doing nothing useful, no matter how busy it looks.</span>
+        <span class="metric__label"><b>writes saved.</b> Data agreed on by a majority and safe. If this is stuck at zero, the database is doing nothing useful, no matter how busy it looks.</span>
       </div>
     </section>
 
     <section class="card col-3">
       <div class="metric metric--gold">
         <span class="metric__value" id="m-rejected">0</span>
-        <span class="metric__label"><b>forgeries blocked</b> — messages someone tampered with in transit, caught and thrown away before they could corrupt any data.</span>
+        <span class="metric__label"><b>forgeries blocked.</b> Messages someone tampered with in transit, caught and thrown away before they could corrupt any data.</span>
       </div>
     </section>
 
     <section class="card col-3">
       <div class="metric metric--data">
         <span class="metric__value" id="m-relayed">0</span>
-        <span class="metric__label"><b>messages rerouted</b> — sent the long way round through a third server because the direct road was closed. Like a detour.</span>
+        <span class="metric__label"><b>messages rerouted.</b> Sent the long way round through a third server because the direct road was closed. A detour.</span>
       </div>
     </section>
 
@@ -185,7 +185,7 @@
       <div class="legend">
         <span><i class="k-ok"></i> reachable</span>
         <span><i class="k-accent"></i> cut</span>
-        <span><i class="k-violet"></i> blind spot — sender still believes this works</span>
+        <span><i class="k-violet"></i> blind spot · sender still believes this works</span>
       </div>
     </section>
 
@@ -202,8 +202,8 @@
         <h2>Why this breaks things so badly</h2>
         <p>
           Picture a meeting. One person can't hear anyone else, but everyone can hear
-          <em>them</em>. Every ten seconds they shout <b>"I call a new vote for chair!"</b> —
-          which legally forces the current chair to step down. Nobody's vote ever reaches them,
+          <em>them</em>. Every ten seconds they shout <b>"I call a new vote for chair!"</b>, which
+          legally forces the current chair to step down. Nobody's vote ever reaches them,
           so they never actually become chair. So they shout it again. And again. Forever.
         </p>
         <p>
@@ -220,7 +220,7 @@
         <div class="finding">
           <b>An honest result, not a sales pitch:</b> this problem already has a decent fix,
           invented in 2014 and shipped in etcd. It's called <b>PreVote</b>: before forcing a
-          real vote, ask around informally first — "would you even vote for me?" If the answer
+          real vote, ask around informally first. "Would you even vote for me?" If the answer
           is no, don't blow up the meeting. In our tests baseline logs <b>30</b> term bumps;
           PreVote logs <b>1</b>. CrossFault also logs <b>1</b>. So CrossFault <b>ties</b> here,
           it doesn't win. Pretending otherwise would be easy and dishonest.
@@ -233,23 +233,23 @@
         </p>
         <p>
           CrossFault keeps a map of who can reach whom, <strong>separately for each
-          direction</strong> — because "A can reach B" and "B can reach A" are genuinely two
+          direction</strong>, because "A can reach B" and "B can reach A" are genuinely two
           different facts. That map buys two things:
         </p>
         <ul>
           <li>A cut-off server works out that it's cut off, and deliberately stays quiet.</li>
           <li>Messages take a <strong>detour</strong> through a third server when the direct
-              route is dead — like traffic rerouting around a closed road.</li>
+              route is dead, like traffic rerouting around a closed road.</li>
         </ul>
         <div class="finding">
           <b>How far the detour idea actually goes:</b> exactly one hop, and no further. With
           three servers there is only ever one possible detour, so calling it "routing" would be
-          generous — it's more like passing a note through the one person still talking to both
+          generous. It's closer to passing a note through the one person still talking to both
           of you. On a bigger cluster it would need a hop limit, a sense of which detour is
           cheapest, and loop protection, none of which exist here. A detour also costs time, and
-          a slow enough message looks identical to a dead server — so on a larger cluster the
+          a slow enough message looks identical to a dead server, so on a larger cluster the
           detours could trigger the very elections they're meant to prevent. Untested above
-          three servers, and honestly stated rather than quietly hoped for.
+          three servers, and stated plainly rather than quietly hoped for.
         </div>
       </div>
     </section>
@@ -260,17 +260,17 @@
         <p>
           Second problem. These servers live in different clouds, so their messages cross the
           public internet through equipment nobody fully controls. What if someone rewrites a
-          message in transit — changing <code>pay $10</code> into <code>pay $10000</code>?
+          message in transit, changing <code>pay $10</code> into <code>pay $10000</code>?
         </p>
         <p>
-          The usual panic response is "we need Byzantine fault tolerance" — the heavy machinery
+          The usual panic response is "we need Byzantine fault tolerance", the heavy machinery
           blockchains use. It's slow, it needs three times as many servers, and here it is
           <strong>completely unnecessary</strong>.
         </p>
         <p>
           Think of a <strong>wax seal on an envelope</strong>. The postman can steal your letter.
           They can burn it. What they <em>cannot</em> do is open it, rewrite it, and re-seal it
-          convincingly — they don't have your seal. So the worst attack available is
+          convincingly, because they don't have your seal. So the worst attack available is
           <em>"the letter never arrived"</em>. And databases already handle lost messages
           perfectly well: they just send it again.
         </p>
@@ -281,18 +281,18 @@
           stays clean. A hard problem downgraded into an easy one.
         </p>
         <p>
-          Why not just use HTTPS? Sometimes you should — and an earlier version of this page
+          Why not just use HTTPS? Sometimes you should. An earlier version of this page
           oversold the answer, so here is the honest one.
         </p>
         <div class="finding">
-          <b>Where this is weaker than the boring option.</b> Real databases — etcd, CockroachDB,
-          TiKV — already run mutual TLS <em>directly between servers</em>, using their own
-          certificate authority. No load balancer in the middle, nothing unwrapping anything. If
-          you can deploy that, it gives you everything the signing above gives you, and it comes
-          with the thing this project does <b>not</b> have: a real system for issuing, rotating
-          and revoking keys. Google's
+          <b>Where this is weaker than the boring option.</b> Real databases like etcd,
+          CockroachDB and TiKV already run mutual TLS <em>directly between servers</em>, using
+          their own certificate authority. No load balancer in the middle, nothing unwrapping
+          anything. If you can deploy that, it gives you everything the signing above gives you,
+          and it comes with the thing this project does <b>not</b> have: a real system for
+          issuing, rotating and revoking keys. Google's
           <a href="https://docs.cloud.google.com/docs/security/encryption-in-transit/application-layer-transport-security" rel="noopener noreferrer">ALTS</a>
-          is a good example of that done properly — and it is a fair reference for the
+          is a good example of that done properly. It is a fair reference for the
           <em>idea</em> of authenticating at the application layer, not for this implementation,
           which is a fixed list of public keys and nothing else.
         </div>
@@ -300,15 +300,15 @@
           So what is signing actually worth here? One thing, and it only matters later: a
           signature is <strong>evidence you can show to someone else</strong>. If a server signs
           two contradictory statements, anyone holding its public key can check that for
-          themselves. A TLS connection proves nothing to a third party — it ends when the
+          themselves. A TLS connection proves nothing to a third party, because it ends when the
           connection does.
         </p>
         <p>
           That transferable evidence is the foundation you would build lie-detection on. Which
           means the honest summary is: <strong>the useful half isn't built yet.</strong> A server
-          that has been fully hacked still owns its key and can sign whatever it likes, and
-          catching that is the genuinely hard problem in this space — the one everything above is
-          only a prerequisite for.
+          that has been fully hacked still owns its key and can sign whatever it likes. Catching
+          that is the genuinely hard problem in this space, and everything above is only a
+          prerequisite for it.
         </p>
       </div>
     </section>
