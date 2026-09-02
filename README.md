@@ -67,13 +67,41 @@ applying, and an attacker who fully controls the network can only **destroy** a 
 forge one. Destruction is an *omission* — a fault class crash-fault-tolerant consensus already
 handles. No 3f+1 replicas, no consensus-layer rewrite.
 
-TLS does not solve this, because TLS is hop-by-hop and terminates at cloud load balancers and
-API gateways, which then see plaintext. Google's
-[ALTS](https://docs.cloud.google.com/docs/security/encryption-in-transit/application-layer-transport-security)
-exists for exactly this reason.
+### Where this is weaker than the boring option
+
+An earlier version of this README claimed TLS doesn't solve this "because it terminates at load
+balancers". That describes a misconfiguration, not the norm, and it oversold the layer.
+
+etcd, CockroachDB and TiKV all run **mTLS directly peer-to-peer** with an internal PKI or SPIFFE
+identities — no terminating proxy in the path. Where you can deploy that, it provides the same
+confidentiality and integrity as the signing here, *plus* key issuance, rotation and revocation,
+none of which this project has. `Keyring` is a fixed map of public keys populated at startup.
+
+Google's [ALTS](https://docs.cloud.google.com/docs/security/encryption-in-transit/application-layer-transport-security)
+is a fair citation for the *principle* of authenticating at the application layer. It is not a
+citation for this implementation being comparable to it.
+
+So what does signing buy that mTLS doesn't? Exactly one thing: a signature is **transferable
+evidence**. Any third party holding the public key can verify what a node said; a TLS session
+proves nothing once it closes. That property is the foundation equivocation detection is built
+on — which means its value here is currently **potential, not realised**, because that layer
+isn't built.
 
 What signing does **not** buy: protection from a compromised node, which holds a valid key and
-can sign whatever it likes. That needs accountability, which is the unbuilt third layer above.
+can sign whatever it likes.
+
+### Known limits of the relay
+
+One hop, and no further. `View.Relay` scans for a single intermediary — it cannot route around a
+two-hop-deep partition, has no TTL, no path cost, and no loop protection. With `N=3` there is
+exactly one candidate, so it is closer to a fallback than to routing. Above three nodes it is
+untested, and the added hop latency interacts with the election timeout in a way this project
+does not currently model: a slow enough relay is indistinguishable from a dead leader, so relays
+could plausibly trigger the elections they exist to prevent.
+
+The right fix is probably to bound it hard — a strict one-hop TTL and an honest "no route"
+otherwise — rather than to grow a mesh routing protocol inside a consensus layer, which would
+mean two distributed protocols with independent convergence dynamics fighting each other.
 
 ## Design notes worth reading
 

@@ -33,8 +33,8 @@ type Transcript struct {
 	recvSeq  uint64
 	started  bool
 
-	gaps    int
-	lastGap string
+	gaps                   int
+	lastGapFrom, lastGapTo uint64
 }
 
 // NewTranscript starts an empty chain with a peer. The zero PrevHash is the
@@ -89,7 +89,11 @@ func (t *Transcript) Accept(env *Envelope, k *Keyring) error {
 	}
 	if t.started && (env.PrevHash != t.recvHead || env.Seq != t.recvSeq+1) {
 		t.gaps++
-		t.lastGap = fmt.Sprintf("seq %d->%d", t.recvSeq, env.Seq)
+		// Record the endpoints, do not format them. Gaps are attacker-triggered:
+		// anyone who can drop packets on this link controls how often this runs,
+		// so formatting a string here hands them a free allocation per dropped
+		// message. Cheap to get wrong, cheap to get right.
+		t.lastGapFrom, t.lastGapTo = t.recvSeq, env.Seq
 	}
 	t.recvHead = env.Hash()
 	t.recvSeq = env.Seq
@@ -102,8 +106,15 @@ func (t *Transcript) Accept(env *Envelope, k *Keyring) error {
 // contradictory claim elsewhere is the start of a fraud case.
 func (t *Transcript) Gaps() int { return t.gaps }
 
-// LastGap describes the most recent discontinuity, for display.
-func (t *Transcript) LastGap() string { return t.lastGap }
+// LastGap describes the most recent discontinuity, for display. Formatted on
+// read rather than on receipt, so a lossy or hostile link cannot make a node
+// allocate once per dropped message.
+func (t *Transcript) LastGap() string {
+	if t.gaps == 0 {
+		return ""
+	}
+	return fmt.Sprintf("seq %d->%d", t.lastGapFrom, t.lastGapTo)
+}
 
 // RecvHead exposes the current inbound chain head so that the accountability
 // layer can compare what a node claims to have told different peers.

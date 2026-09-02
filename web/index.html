@@ -241,6 +241,16 @@
           <li>Messages take a <strong>detour</strong> through a third server when the direct
               route is dead — like traffic rerouting around a closed road.</li>
         </ul>
+        <div class="finding">
+          <b>How far the detour idea actually goes:</b> exactly one hop, and no further. With
+          three servers there is only ever one possible detour, so calling it "routing" would be
+          generous — it's more like passing a note through the one person still talking to both
+          of you. On a bigger cluster it would need a hop limit, a sense of which detour is
+          cheapest, and loop protection, none of which exist here. A detour also costs time, and
+          a slow enough message looks identical to a dead server — so on a larger cluster the
+          detours could trigger the very elections they're meant to prevent. Untested above
+          three servers, and honestly stated rather than quietly hoped for.
+        </div>
       </div>
     </section>
 
@@ -271,16 +281,35 @@
           stays clean. A hard problem downgraded into an easy one.
         </p>
         <p>
-          Why not just use HTTPS? Because HTTPS protects each <em>hop</em>, and unwraps at every
-          load balancer along the way — each of which sees the plain text. Google hit this exact
-          wall and built <a href="https://docs.cloud.google.com/docs/security/encryption-in-transit/application-layer-transport-security" rel="noopener noreferrer">ALTS</a> for it.
+          Why not just use HTTPS? Sometimes you should — and an earlier version of this page
+          oversold the answer, so here is the honest one.
         </p>
         <div class="finding">
-          <b>What this does not fix:</b> a server that has been fully hacked. It still owns its
-          seal, so it can sign lies all day. Catching that needs a different technique — proving
-          who lied, rather than preventing it. That layer is designed but
-          <strong>not built yet</strong>, and it would be dishonest to imply otherwise.
+          <b>Where this is weaker than the boring option.</b> Real databases — etcd, CockroachDB,
+          TiKV — already run mutual TLS <em>directly between servers</em>, using their own
+          certificate authority. No load balancer in the middle, nothing unwrapping anything. If
+          you can deploy that, it gives you everything the signing above gives you, and it comes
+          with the thing this project does <b>not</b> have: a real system for issuing, rotating
+          and revoking keys. Google's
+          <a href="https://docs.cloud.google.com/docs/security/encryption-in-transit/application-layer-transport-security" rel="noopener noreferrer">ALTS</a>
+          is a good example of that done properly — and it is a fair reference for the
+          <em>idea</em> of authenticating at the application layer, not for this implementation,
+          which is a fixed list of public keys and nothing else.
         </div>
+        <p>
+          So what is signing actually worth here? One thing, and it only matters later: a
+          signature is <strong>evidence you can show to someone else</strong>. If a server signs
+          two contradictory statements, anyone holding its public key can check that for
+          themselves. A TLS connection proves nothing to a third party — it ends when the
+          connection does.
+        </p>
+        <p>
+          That transferable evidence is the foundation you would build lie-detection on. Which
+          means the honest summary is: <strong>the useful half isn't built yet.</strong> A server
+          that has been fully hacked still owns its key and can sign whatever it likes, and
+          catching that is the genuinely hard problem in this space — the one everything above is
+          only a prerequisite for.
+        </p>
       </div>
     </section>
 
