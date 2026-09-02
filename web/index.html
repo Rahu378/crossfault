@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CrossFault — cross-cloud consensus under partial partitions</title>
+<meta name="description" content="A live Raft engine, compiled to WebAssembly, that you can break. Cut a network link in one direction only and watch textbook consensus livelock while a connectivity-aware variant keeps committing.">
+
+<!--
+  Content-Security-Policy, tightened as far as this page allows.
+  'wasm-unsafe-eval' is required to instantiate WebAssembly at all; it does NOT
+  re-enable eval() for JavaScript. Everything else is same-origin, there is no
+  connect-src beyond self (the engine runs locally — nothing is uploaded), and
+  object/base/frame-ancestors are shut off entirely.
+-->
+<meta http-equiv="Content-Security-Policy" content="
+  default-src 'self';
+  script-src 'self' 'wasm-unsafe-eval';
+  style-src 'self' https://fonts.googleapis.com;
+  font-src https://fonts.gstatic.com;
+  img-src 'self' data:;
+  connect-src 'self';
+  object-src 'none';
+  base-uri 'none';
+  form-action 'none'">
+<!--
+  frame-ancestors is deliberately absent: browsers ignore it when delivered via
+  <meta>, so including it would be security theatre. It requires a real response
+  header, which GitHub Pages cannot set. Clickjacking risk on a page with no
+  authentication and no state-changing actions is negligible; if this were ever
+  served from a host that can set headers, add:
+      Content-Security-Policy: frame-ancestors 'none'
+      X-Content-Type-Options: nosniff
+-->
+<meta name="referrer" content="strict-origin-when-cross-origin">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚡</text></svg>">
+</head>
+<body>
+
+<div id="boot">INITIALISING CONSENSUS ENGINE…</div>
+<div class="grid-bg" aria-hidden="true"></div>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Distributed systems · <b>Go → WebAssembly</b> · runs in your browser</p>
+    <h1>Consensus that survives a network broken in one direction.</h1>
+    <p class="standfirst">
+      Raft and Paxos quietly assume that if A can reach B, B can reach A. Across clouds that
+      assumption breaks — asymmetric routing, one-way security-group rules and half-open NAT
+      state all produce links that work in exactly one direction. The result is not a crash.
+      It is a <strong>livelock</strong>: a node campaigns forever, deposing a healthy leader
+      on every attempt, while every health check reports green.
+    </p>
+    <div class="provenance">
+      Nothing here is pre-recorded. The Go consensus engine — real Ed25519 signatures, real
+      leader election, real hash-chained logs — is compiled to WebAssembly and executing in
+      your browser right now. Cut a link below and you are driving the same code the test
+      suite exercises. Same seed, same run: <code>deterministic by construction</code>.
+    </div>
+  </header>
+
+  <div class="controls" role="toolbar" aria-label="Simulation controls">
+    <div class="seg" role="group" aria-label="Protocol mode">
+      <button data-mode="baseline"   aria-pressed="false">baseline raft</button>
+      <button data-mode="prevote"    aria-pressed="false">+ prevote</button>
+      <button data-mode="crossfault" aria-pressed="true">crossfault</button>
+    </div>
+
+    <button class="btn" id="playpause" aria-pressed="true">⏸ pause</button>
+    <button class="btn" id="stepbtn">step ×10</button>
+    <button class="btn btn--go" id="proposebtn">propose write</button>
+    <button class="btn btn--danger" id="cutbtn">cut inbound to aws-a</button>
+    <button class="btn" id="resetbtn">reset</button>
+
+    <span class="spacer"></span>
+    <span class="tickread">tick <b id="tick">0</b> · leader <b id="leaderread">—</b></span>
+  </div>
+
+  <main class="bento">
+
+    <section class="card col-8">
+      <div class="card__head">
+        <h2 class="card__title">Cluster topology</h2>
+        <span class="card__note">click any arrow to cut that direction · click again to heal</span>
+      </div>
+      <svg id="topology" viewBox="0 0 760 360" role="img" aria-label="Cluster topology graph"></svg>
+      <div class="legend">
+        <span><i class="k-hair"></i> healthy</span>
+        <span><i class="k-accent"></i> cut</span>
+        <span><i class="k-asym"></i> asymmetric</span>
+        <span><i class="k-gold"></i> hostile intermediary</span>
+        <span><i class="k-ok"></i> leader</span>
+      </div>
+    </section>
+
+    <section class="card col-4">
+      <div class="card__head"><h2 class="card__title">Replicas</h2></div>
+      <div class="nodes" id="nodes"></div>
+    </section>
+
+    <section class="card col-3">
+      <div class="metric metric--alert">
+        <span class="metric__value" id="m-bumps">0</span>
+        <span class="metric__label">term bumps — the livelock signal. Flat is healthy; climbing means the cluster is thrashing instead of working.</span>
+      </div>
+    </section>
+
+    <section class="card col-3">
+      <div class="metric metric--ok">
+        <span class="metric__value" id="m-commit">0</span>
+        <span class="metric__label">committed entries. The only measure that matters: is the cluster doing useful work?</span>
+      </div>
+    </section>
+
+    <section class="card col-3">
+      <div class="metric metric--gold">
+        <span class="metric__value" id="m-rejected">0</span>
+        <span class="metric__label">forged messages rejected at the signature check, before touching consensus state.</span>
+      </div>
+    </section>
+
+    <section class="card col-3">
+      <div class="metric metric--data">
+        <span class="metric__value" id="m-relayed">0</span>
+        <span class="metric__label">messages routed around a broken edge via a third node, instead of being lost.</span>
+      </div>
+    </section>
+
+    <section class="card col-6">
+      <div class="card__head">
+        <h2 class="card__title">Directed reachability</h2>
+        <span class="card__note">row → column · truth vs. belief</span>
+      </div>
+      <div id="matrix"></div>
+      <div class="legend">
+        <span><i class="k-ok"></i> reachable</span>
+        <span><i class="k-accent"></i> cut</span>
+        <span><i class="k-violet"></i> blind spot — sender still believes this works</span>
+      </div>
+    </section>
+
+    <section class="card col-6">
+      <div class="card__head">
+        <h2 class="card__title">Event log</h2>
+        <span class="card__note">newest first</span>
+      </div>
+      <div class="log" id="log"></div>
+    </section>
+
+    <section class="card col-6">
+      <div class="prose">
+        <h2>What actually breaks</h2>
+        <p>
+          Standard consensus is crash-fault tolerant: it assumes a node either works or stops.
+          A one-way link violates that model without any node failing. The classic
+          symptom is the <strong>disruptive server</strong> — a replica that can send but not
+          receive campaigns endlessly, incrementing its term each round and forcing a healthy
+          leader to stand down, forever.
+        </p>
+        <p>
+          Two known mitigations exist and etcd ships both: <code>PreVote</code>, a non-binding
+          straw poll that does not increment anyone's term (Ongaro's Raft thesis §9.6), and
+          <code>CheckQuorum</code>, which makes a leader step down once it stops hearing from a
+          majority. Switch to <em>+ prevote</em> above and watch the term counter go flat.
+        </p>
+
+        <div class="finding">
+          <b>Measured finding, reported as found:</b> under this fault, PreVote alone already
+          fixes the livelock. Baseline logs <b>30</b> term bumps in 300 ticks; PreVote logs
+          <b>1</b>; CrossFault also logs <b>1</b>. CrossFault does not beat PreVote here — it
+          matches it, and adds a different capability: relaying. Claiming otherwise would be
+          easy and dishonest, so the numbers are printed exactly as the test suite produces them.
+        </div>
+
+        <h2>What CrossFault adds</h2>
+        <p>
+          PreVote makes a badly-connected node harmless. It does not make it <em>useful</em>,
+          and it does not recover the lost link. CrossFault tracks reachability as a
+          <strong>directed graph</strong> rather than a single number, which enables two things
+          PreVote cannot do: a node with one-way connectivity declines to campaign at all
+          (rather than campaigning and losing), and messages are <strong>relayed</strong>
+          through a third node around the broken edge — the approach proposed in
+          <em>Toward a Generic Fault Tolerance Technique for Partial Network Partitioning</em>
+          (OSDI '20).
+        </p>
+      </div>
+    </section>
+
+    <section class="card col-6">
+      <div class="prose">
+        <h2>Why there is no BFT here</h2>
+        <p>
+          A hostile transit path is <strong>not</strong> a Byzantine fault, and conflating the
+          two is the most common error in this problem space. Byzantine fault tolerance is for
+          when a <em>node</em> is compromised and lies. Tampering on the <em>wire</em> is a
+          different, cheaper problem.
+        </p>
+        <p>
+          Every message here is signed end-to-end with Ed25519 by the sending node, and verified
+          before it can touch consensus state. TLS does not solve this, because TLS is
+          hop-by-hop and terminates at cloud load balancers and API gateways, which then see
+          plaintext. Google's <a href="https://docs.cloud.google.com/docs/security/encryption-in-transit/application-layer-transport-security" rel="noopener noreferrer">ALTS</a>
+          exists for exactly this reason.
+        </p>
+        <p>
+          The consequence is the whole argument: an attacker who fully controls the wire can
+          only <strong>destroy</strong> a message, never forge one. Destruction is an
+          <em>omission</em> — a fault class crash-fault-tolerant consensus already handles.
+          Hit <em>corrupt a link</em> and watch the rejection counter climb while the log stays
+          clean. No 3f+1 replicas, no proof-of-stake, no seconds-long finality.
+        </p>
+        <p>
+          What signing does <strong>not</strong> buy: protection from a genuinely compromised
+          node, which holds a valid key and can sign whatever it likes. That needs accountability
+          — making equivocation provable and attributable, in the spirit of
+          <em>PeerReview</em> (SOSP '07) — which is the next layer, and is not yet built here.
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    <span>Built with Go 1.27 → WebAssembly · no runtime dependencies · <span id="wasmsize">engine ~1.4 MB gzipped</span></span>
+    <span><a href="https://github.com/Rahu378/crossfault" rel="noopener noreferrer">source on GitHub</a></span>
+  </footer>
+
+</div>
+
+<script src="assets/js/wasm_exec.js"></script>
+<script src="assets/js/app.js"></script>
+</body>
+</html>

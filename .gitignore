@@ -1,0 +1,9 @@
+# The WASM binary is a build artifact. It is rebuilt in CI from source on every
+# deploy, so committing it would only create a way for the published engine to
+# drift from the code that supposedly produced it.
+web/engine.wasm
+
+.DS_Store
+*.test
+*.out
+coverage.html

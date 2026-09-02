@@ -1,0 +1,82 @@
+name: test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: go test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: vet
+        run: go vet ./...
+
+      # -race catches data races the deterministic simulator would otherwise
+      # hide. -count=3 catches order-dependent flakiness in the consensus tests,
+      # which is exactly the class of bug that is miserable to debug later.
+      - name: test
+        run: go test -race -count=3 ./...
+
+  deploy:
+    name: build wasm and publish
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          check-latest: true
+
+      # The committed engine.wasm is rebuilt here rather than trusted, so the
+      # deployed binary always corresponds to the source in this commit.
+      - name: build engine
+        run: |
+          GOOS=js GOARCH=wasm go build -ldflags="-s -w" -o web/engine.wasm ./cmd/wasm
+          cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" web/assets/js/wasm_exec.js \
+            || cp "$(go env GOROOT)/misc/wasm/wasm_exec.js" web/assets/js/wasm_exec.js
+          ls -lh web/engine.wasm
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
